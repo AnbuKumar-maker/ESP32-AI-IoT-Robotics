@@ -1,0 +1,54 @@
+#include <ESP8266WiFi.h>
+#include <WiFiClient.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266mDNS.h>
+
+MDNSResponder mdns;
+
+const char* ssid = " Your Wifi ";
+const char* password = "Your PW ";
+
+ESP8266WebServer server(80);
+
+String webPage;
+
+
+void setup(void) {
+  // put your setup code here, to run once:
+  Serial.begin(115200);
+  WiFi.begin(ssid,password);
+  Serial.println("");
+
+  Serial.print("Connecting to: ");
+  Serial.println(ssid);
+
+  while (WiFi.status() !=WL_CONNECTED){
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("");
+  Serial.print("Connected to: ");
+  Serial.println(ssid);
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+
+  if (mdns.begin("esp8266")){
+    Serial.println("mDNS Responder has started");
+  }
+  server.on("/",[](){
+    webPage = "Hi! Welcome to the Homepage!";
+    server.send(200,"text/html",webPage);
+    Serial.println("webPage");
+  });
+  server.on("mainPage",[](){
+    webPage = "Hi! Welcome to the Main Page!";
+    server.send(200,"text/html",webPage);
+    Serial.println("webPage");    
+  });
+  server.begin();
+  Serial.println("HTTP server started");
+  }
+void loop(void) {
+  // put your main code here, to run repeatedly:
+  server.handleClient();
+}
