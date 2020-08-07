@@ -1,0 +1,954 @@
+// ESP32 Dev board - DOIT ESP32 DEVKIT V1
+// 3D printed Segments using WS2812B RGB LED strips with data pin
+// 10K resistor (x2)
+// PushButton (x2)
+// Blue LED
+
+/* Wiring Notes as per code below:
+  Blue LED -
+  Negative (short LED pin) -> GND
+  Positive (long LED pin) -> D21 (GPIO pin)
+
+  Home & Vistor Reset Score push buttons -
+  Button pin -> D22 (home)GPIO pin / D23 (visitor) GPIO pin
+  Button pin -> 10K resistor -> GND
+  Other side button pin -> 3V3 pin
+*/
+
+// LED
+#include <FastLED.h>
+
+// How many leds in your strip?
+#define NUM_LEDS 31
+
+// need to define DATA_PIN to control LEDs.
+#define homeLED_PIN 5
+#define visitorLED_PIN 4
+
+// Define the array of leds
+CRGB homeLEDs[NUM_LEDS];
+CRGB visitorLEDs[NUM_LEDS];
+
+//////////////////////////////////////////////////////////////////
+
+// Bluetooth
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
+
+BLEServer *pServer = NULL;
+BLECharacteristic * pTxCharacteristic;
+bool deviceConnected = false;
+bool oldDeviceConnected = false;
+
+// See the following for generating UUIDs: https://www.uuidgenerator.net/
+#define SERVICE_UUID           "6E400001-B5A3-F393-E0A9-E50E24DCCA9E" // UART service UUID
+#define CHARACTERISTIC_UUID_RX "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
+#define CHARACTERISTIC_UUID_ScoreTX "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
+
+//////////////////////////////////////////////////////////////////
+
+
+//Variables
+//////////////////////////////////////////////////////////////////
+uint8_t hScore = 0;  // 1st digit in Home Score
+uint8_t hScore2 = 0;  // 2nd digit in Home Score
+uint8_t vScore = 0;  // 1st digit in Vistor Score
+uint8_t vScore2 = 0;  // 2nd digit in Vistor Score
+
+uint8_t hTScore = 0; //Total Home score for Bluetooth Android app
+uint8_t vTScore = 0; //Total Home score for Bluetooth Android app
+
+uint8_t currentHomePoints = hTScore; //Used to compare scores for loop to prevent consent BT packets been sent to Client
+uint8_t currentVisitorPoints = vTScore; //Used to compare scores for loop to prevent consent BT packets been sent to Client
+
+// Physical Reset Buttons
+const uint8_t resetHomePin = 23;
+const uint8_t resetVisitorPin = 22;
+// variables will change:
+uint8_t resetbuttonStateH = 0;         // variable for reading the pushbutton status
+uint8_t resetbuttonStateV = 0;
+
+
+//Functions
+////////////////////////////////////////////////////////////////
+// Clear LEDs for next number to display
+
+void clearHomeLeft() {
+  for (byte i = 0; i < 15; i++)
+    homeLEDs[i] = CRGB::Black;
+  FastLED.show();
+  delay(100);
+}
+void clearHomeRight() {
+  for (byte i = 16; i < 31; i++)
+    homeLEDs[i] = CRGB::Black;
+  FastLED.show();
+  delay(100);
+}
+
+void clearVisitorLeft() {
+  for (byte i = 0; i < 15; i++)
+    visitorLEDs[i] = CRGB::Black;
+  FastLED.show();
+  delay(100);
+}
+void clearVisitorRight() {
+  for (byte i = 16; i < 31; i++)
+    visitorLEDs[i] = CRGB::Black;
+  FastLED.show();
+  delay(100);
+}
+
+
+// Reset LED to diplay next number for Home & Vistor
+void reset() {
+  resetHome();
+  resetVisitor();
+
+  hScore = 0;  // Reset value of 1st digit in Home Score
+  hScore2 = 0;  // Reset value of 2nd digit in Home Score
+  vScore = 0;  // Reset value of 1st digit in Vistor Score
+  vScore2 = 0;  // Reset value of 2nd digit in Vistor Score
+  hTScore = 0; //Reset Home score for Bluetooth Android app
+  vTScore = 0; //Reset Home score for Bluetooth Android app
+  currentHomePoints = 0;
+  currentVisitorPoints = 0;
+}
+
+void resetHome() {
+  for (byte i = 0; i < 31; i++)
+    homeLEDs[i] = CRGB::Black;
+  FastLED.show();
+  delay(100);
+  hScore = 0;  // Reset value of 1st digit in Home Score
+  hScore2 = 0;  // Reset value of 2nd digit in Home Score
+  hTScore = 0; //Reset Home score for Bluetooth Android app
+}
+
+void resetVisitor() {
+  for (byte i = 0; i < 31; i++)
+    visitorLEDs[i] = CRGB::Black;
+  FastLED.show();
+  delay(100);
+  vScore = 0;  // Reset value of 1st digit in Vistor Score
+  vScore2 = 0;  // Reset value of 2nd digit in Vistor Score
+  vTScore = 0; //Reset Home score for Bluetooth Android app
+}
+
+//////////////////////////////////////////////////////////////////
+
+//Segment Numbers controls which ones
+void homeLeftNum() {
+
+  switch (hScore) {
+    case 0:
+      for (byte i = 2; i < 15; i++)
+        homeLEDs[i] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+
+    case 1:
+      homeLEDs[2] = homeLEDs[3] = homeLEDs[13] = homeLEDs[14] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 2:
+      homeLEDs[0] = CRGB::Red; homeLEDs[1] = CRGB::Red;
+      for (byte i = 4; i < 8; i++)
+        for (byte a = 11; a < 15; a++)
+          homeLEDs[i] = homeLEDs[a] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 3:
+      for (byte i = 0; i < 6; i++)
+        for (byte a = 11; a < 15; a++)
+          homeLEDs[i] = homeLEDs[a] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 4:
+      for (byte i = 0; i < 4; i++)
+        homeLEDs[i] = homeLEDs[9] = homeLEDs[10] = homeLEDs[13] = homeLEDs[14] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 5:
+      for (byte i = 0; i < 6; i++)
+        for (byte a = 9; a < 13; a++)
+          homeLEDs[i] = homeLEDs[a] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 6:
+      for (byte i = 0; i < 8; i++)
+        for (byte a = 9; a < 13; a++)
+          homeLEDs[i] = homeLEDs[a] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 7:
+      for (byte i = 11; i < 15; i++)
+        homeLEDs[2] = homeLEDs[3] = homeLEDs[i] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 8:
+      for (byte i = 0; i < 15; i++)
+        homeLEDs[i] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 9:
+      for (byte i = 0; i < 6; i++)
+        for (byte a = 9; a < 15; a++)
+          homeLEDs[i] = homeLEDs[a] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+  }
+}
+
+//////////////////////////////////////////////////////////////////
+void homeRightNum() {
+
+  switch (hScore2) {
+    case 0:
+      for (byte i = 16; i < 29; i++)
+        homeLEDs[i] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 1:
+      for (byte i = 20; i < 25; i++)
+        homeLEDs[i] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 2:
+      for (byte i = 18; i < 22; i++)
+        for (byte a = 25; a < 31; a++)
+          homeLEDs[i] = homeLEDs[a] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 3:
+      for (byte i = 18; i < 27; i++)
+        homeLEDs[i] = homeLEDs[29] = homeLEDs[30] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 4:
+      for (byte i = 20; i < 25; i++)
+        homeLEDs[i] = homeLEDs[16] = homeLEDs[17] = homeLEDs[29] = homeLEDs[30] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 5:
+      for (byte i = 16; i < 20; i++)
+        for (byte a = 22; a < 27; a++)
+          homeLEDs[i] = homeLEDs[a] = homeLEDs[29] = homeLEDs[30] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 6:
+      for (byte i = 16; i < 20; i++)
+        for (byte a = 23; a < 31; a++)
+          homeLEDs[i] = homeLEDs[a] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 7:
+      for (byte i = 18; i < 25; i++)
+        homeLEDs[i] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 8:
+      for (byte i = 16; i < 31; i++)
+        homeLEDs[i] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 9:
+      for (byte i = 16; i < 27; i++)
+        homeLEDs[i] = homeLEDs[29] = homeLEDs[30] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+  }
+}
+
+//////////////////////////////////////////////////////////////////
+void visitorLeftNum() {
+
+  switch (vScore) {
+    case 0:
+      for (byte i = 2; i < 15; i++)
+        visitorLEDs[i] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+
+    case 1:
+      visitorLEDs[2] = visitorLEDs[3] = visitorLEDs[13] = visitorLEDs[14] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 2:
+      visitorLEDs[0] = CRGB::Red; visitorLEDs[1] = CRGB::Red;
+      for (byte i = 4; i < 8; i++)
+        for (byte a = 11; a < 15; a++)
+          visitorLEDs[i] = visitorLEDs[a] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 3:
+      for (byte i = 0; i < 6; i++)
+        for (byte a = 11; a < 15; a++)
+          visitorLEDs[i] = visitorLEDs[a] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 4:
+      for (byte i = 0; i < 4; i++)
+        visitorLEDs[i] = visitorLEDs[9] = visitorLEDs[10] = visitorLEDs[13] = visitorLEDs[14] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 5:
+      for (byte i = 0; i < 6; i++)
+        for (byte a = 9; a < 13; a++)
+          visitorLEDs[i] = visitorLEDs[a] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 6:
+      for (byte i = 0; i < 8; i++)
+        for (byte a = 9; a < 13; a++)
+          visitorLEDs[i] = visitorLEDs[a] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 7:
+      for (byte i = 11; i < 15; i++)
+        visitorLEDs[2] = visitorLEDs[3] = visitorLEDs[i] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 8:
+      for (byte i = 0; i < 15; i++)
+        visitorLEDs[i] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 9:
+      for (byte i = 0; i < 6; i++)
+        for (byte a = 9; a < 15; a++)
+          visitorLEDs[i] = visitorLEDs[a] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+  }
+}
+
+//////////////////////////////////////////////////////////////////
+void visitorRightNum() {
+
+  switch (vScore2) {
+    case 0:
+      for (byte i = 16; i < 29; i++)
+        visitorLEDs[i] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 1:
+      for (byte i = 20; i < 25; i++)
+        visitorLEDs[i] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 2:
+      for (byte i = 18; i < 22; i++)
+        for (byte a = 25; a < 31; a++)
+          visitorLEDs[i] = visitorLEDs[a] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 3:
+      for (byte i = 18; i < 27; i++)
+        visitorLEDs[i] = visitorLEDs[29] = visitorLEDs[30] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 4:
+      for (byte i = 20; i < 25; i++)
+        visitorLEDs[i] = visitorLEDs[16] = visitorLEDs[17] = visitorLEDs[29] = visitorLEDs[30] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 5:
+      for (byte i = 16; i < 20; i++)
+        for (byte a = 22; a < 27; a++)
+          visitorLEDs[i] = visitorLEDs[a] = visitorLEDs[29] = visitorLEDs[30] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 6:
+      for (byte i = 16; i < 20; i++)
+        for (byte a = 23; a < 31; a++)
+          visitorLEDs[i] = visitorLEDs[a] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 7:
+      for (byte i = 18; i < 25; i++)
+        visitorLEDs[i] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 8:
+      for (byte i = 16; i < 31; i++)
+        visitorLEDs[i] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+
+    case 9:
+      for (byte i = 16; i < 27; i++)
+        visitorLEDs[i] = visitorLEDs[29] = visitorLEDs[30] = CRGB::Red;
+      FastLED.show();
+      delay(100);
+      break;
+  }
+}
+
+////////////////////////////////////////////////////////////
+
+// Adding Points for Home team
+void addHome1Point() {
+  if  (hScore2 < 9) {          // Displays 1-9 on Home scoreboard
+    hScore2 = hScore2 + 1;
+    hTScore++;
+    clearHomeRight();              // Clears Display for new number to display
+    homeRightNum();               // Displays Number on LED Segment
+
+  }
+  else if  (hScore2 == 9) {    // Displays (10,20,30,40,50,60,70,80,90) on Home scoreboard
+    hScore = hScore + 1;
+    hScore2 = 0;
+    hTScore++;
+    clearHomeLeft(); clearHomeRight();     // Clears Display for new number to display
+    homeLeftNum();           // Displays Number on LED Segment
+    homeRightNum();          // Displays Number on LED Segment
+  }
+}
+
+////////////////////////////////////////////////////////////
+
+
+void addHome2Points() {
+  if  (hScore2 < 8) {          // Displays 1-9 on Home scoreboard
+    hScore2 = hScore2 + 2;
+    hTScore = hTScore + 2;
+    clearHomeRight();              // Clears Display for new number to display
+    homeRightNum();                // Displays Number on LED Segment
+  }
+  else if  (hScore2 == 8) {    // Displays (10,20,30,40,50,60,70,80,90) on Home scoreboard
+    hScore = hScore + 1;
+    hScore2 = 0;
+    hTScore = hTScore + 2;
+    clearHomeLeft(); clearHomeRight();     // Clears Display for new number to display
+    homeLeftNum();           // Displays Number on LED Segment
+    homeRightNum();          // Displays Number on LED Segment
+  }
+  else if  (hScore2 == 9) {    // Displays (11,21,31,41,51,61,71,81,91) on Home scoreboard
+    hScore = hScore + 1;
+    hScore2 = 1;
+    hTScore = hTScore + 2;
+    clearHomeLeft(); clearHomeRight();     // Clears Display for new number to display
+    homeLeftNum();           // Displays Number on LED Segment
+    homeRightNum();          // Displays Number on LED Segment
+  }
+}
+
+////////////////////////////////////////////////////////////
+
+void addHome3Points() {
+  if  (hScore2 < 7) {          // Displays 1-9 on Home scoreboard
+    hScore2 = hScore2 + 3;
+    hTScore = hTScore + 3;
+    clearHomeRight();              // Clears Display for new number to display
+    homeRightNum();                // Displays Number on LED Segment
+
+  }
+  else if  (hScore2 == 7) {    // Displays (10,20,30,40,50,60,70,80,90) on Home scoreboard
+    hScore = hScore + 1;
+    hScore2 = 0;
+    hTScore = hTScore + 3;
+    clearHomeLeft(); clearHomeRight();     // Clears Display for new number to display
+    homeLeftNum();           // Displays Number on LED Segment
+    homeRightNum();          // Displays Number on LED Segment
+  }
+  else if  (hScore2 == 8) {    // Displays (11,21,31,41,51,61,71,81,91) on Home scoreboard
+    hScore = hScore + 1;
+    hScore2 = 1;
+    hTScore = hTScore + 3;
+    clearHomeLeft(); clearHomeRight();     // Clears Display for new number to display
+    homeLeftNum();           // Displays Number on LED Segment
+    homeRightNum();          // Displays Number on LED Segment
+  }
+  else if  (hScore2 == 9) {    // Displays (12,22,32,42,52,62,72,82,92) on Home scoreboard
+    hScore = hScore + 1;
+    hScore2 = 2;
+    hTScore = hTScore + 3;
+    clearHomeLeft(); clearHomeRight();     // Clears Display for new number to display
+    homeLeftNum();           // Displays Number on LED Segment
+    homeRightNum();          // Displays Number on LED Segment
+  }
+}
+
+////////////////////////////////////////////////////////////
+
+void addHome6Points() {
+  if  (hScore2 < 4) {          // Displays 1-9 on Home scoreboard
+    hScore2 = hScore2 + 6;
+    hTScore = hTScore + 6;
+    clearHomeRight();              // Clears Display for new number to display
+    homeRightNum();                // Displays Number on LED Segment
+  }
+  else if  (hScore2 == 4) {    // Displays (10,20,30,40,50,60,70,80,90) on Home scoreboard
+    hScore = hScore + 1;
+    hScore2 = 0;
+    hTScore = hTScore + 6;
+    clearHomeLeft(); clearHomeRight();     // Clears Display for new number to display
+    homeLeftNum();           // Displays Number on LED Segment
+    homeRightNum();          // Displays Number on LED Segment
+  }
+  else if  (hScore2 == 5) {    // Displays (11,21,31,41,51,61,71,81,91) on Home scoreboard
+    hScore = hScore + 1;
+    hScore2 = 1;
+    hTScore = hTScore + 6;
+    clearHomeLeft(); clearHomeRight();     // Clears Display for new number to display
+    homeLeftNum();           // Displays Number on LED Segment
+    homeRightNum();          // Displays Number on LED Segment
+  }
+  else if  (hScore2 == 6) {    // Displays (12,22,32,42,52,62,72,82,92) on Home scoreboard
+    hScore = hScore + 1;
+    hScore2 = 2;
+    hTScore = hTScore + 6;
+    clearHomeLeft(); clearHomeRight();     // Clears Display for new number to display
+    homeLeftNum();           // Displays Number on LED Segment
+    homeRightNum();          // Displays Number on LED Segment
+  }
+  else if  (hScore2 == 7) {    // Displays (13,23,33,43,53,63,73,83,93) on Home scoreboard
+    hScore = hScore + 1;
+    hScore2 = 3;
+    hTScore = hTScore + 6;
+    clearHomeLeft(); clearHomeRight();     // Clears Display for new number to display
+    homeLeftNum();           // Displays Number on LED Segment
+    homeRightNum();          // Displays Number on LED Segment
+  }
+  else if  (hScore2 == 8) {    // Displays (14,24,34,44,54,64,74,84,94) on Home scoreboard
+    hScore = hScore + 1;
+    hScore2 = 4;
+    hTScore = hTScore + 6;
+    clearHomeLeft(); clearHomeRight();     // Clears Display for new number to display
+    homeLeftNum();           // Displays Number on LED Segment
+    homeRightNum();          // Displays Number on LED Segment
+  }
+  else if  (hScore2 == 9) {     // Displays (15,25,35,45,55,65,75,85,95) on Home scoreboard
+    hScore = hScore + 1;
+    hScore2 = 5;
+    hTScore = hTScore + 6;
+    clearHomeLeft(); clearHomeRight();     // Clears Display for new number to display
+    homeLeftNum();           // Displays Number on LED Segment
+    homeRightNum();          // Displays Number on LED Segment
+  }
+}
+
+////////////////////////////////////////////////////////////
+
+// Adds point to Visitor Team
+void addVisitor1Point() {
+  if  (vScore2 < 9) {          // Displays 1-9 on Visitor scoreboard
+    vScore2 = vScore2 + 1;
+    vTScore++;
+    clearVisitorRight();          // Clears Display for new number to display
+    visitorRightNum();           // Displays Number on LED Segment
+  }
+  else if  (vScore2 == 9) {    // Displays (10,20,30,40,50,60,70,80,90) on Visitor scoreboard
+    vScore = vScore + 1;
+    vScore2 = 0;
+    vTScore++;
+    clearVisitorLeft(); clearVisitorRight();     // Clears Display for new number to display
+    visitorLeftNum();           // Displays Number on LED Segment
+    visitorRightNum();          // Displays Number on LED Segment
+  }
+}
+
+////////////////////////////////////////////////////////////
+
+void addVisitor2Points() {
+  if  (vScore2 < 8) {          // Displays 1-9 on Visitor scoreboard
+    vScore2 = vScore2 + 2;
+    vTScore = vTScore + 2;
+    clearVisitorRight();          // Clears Display for new number to display
+    visitorRightNum();           // Displays Number on LED Segment
+  }
+  else if  (vScore2 == 8) {    // Displays (10,20,30,40,50,60,70,80,90) on Visitor scoreboard
+    vScore = vScore + 1;
+    vScore2 = 0;
+    vTScore = vTScore + 2;
+    clearVisitorLeft(); clearVisitorRight();     // Clears Display for new number to display
+    visitorLeftNum();           // Displays Number on LED Segment
+    visitorRightNum();          // Displays Number on LED Segment
+  }
+  else if  (vScore2 == 9) {    // Displays (11,21,31,41,51,61,71,81,91) on Visitor scoreboard
+    vScore = vScore + 1;
+    vScore2 = 1;
+    vTScore = vTScore + 2;
+    clearVisitorLeft(); clearVisitorRight();     // Clears Display for new number to display
+    visitorLeftNum();           // Displays Number on LED Segment
+    visitorRightNum();          // Displays Number on LED Segment
+  }
+}
+
+////////////////////////////////////////////////////////////
+
+void addVisitor3Points() {
+  if  (vScore2 < 7) {          // Displays 1-9 on Visitor scoreboard
+    vScore2 = vScore2 + 3;
+    vTScore = vTScore + 3;
+    clearVisitorRight();          // Clears Display for new number to display
+    visitorRightNum();           // Displays Number on LED Segment
+  }
+  else if  (vScore2 == 7) {    // Displays (10,20,30,40,50,60,70,80,90) on Visitor scoreboard
+    vScore = vScore + 1;
+    vScore2 = 0;
+    vTScore = vTScore + 3;
+    clearVisitorLeft(); clearVisitorRight();     // Clears Display for new number to display
+    visitorLeftNum();           // Displays Number on LED Segment
+    visitorRightNum();          // Displays Number on LED Segment
+  }
+  else if  (vScore2 == 8) {    // Displays (11,21,31,41,51,61,71,81,91) on Visitor Scoreboard
+    vScore = vScore + 1;
+    vScore2 = 1;
+    vTScore = vTScore + 3;
+    clearVisitorLeft(); clearVisitorRight();     // Clears Display for new number to display
+    visitorLeftNum();           // Displays Number on LED Segment
+    visitorRightNum();          // Displays Number on LED Segment
+  }
+  else if  (vScore2 == 9) {    // Displays (12,22,32,42,52,62,72,82,92) on Visitor Scoreboard
+    vScore = vScore + 1;
+    vScore2 = 2;
+    vTScore = vTScore + 3;
+    clearVisitorLeft(); clearVisitorRight();     // Clears Display for new number to display
+    visitorLeftNum();           // Displays Number on LED Segment
+    visitorRightNum();          // Displays Number on LED Segment
+  }
+}
+
+////////////////////////////////////////////////////////////
+
+void addVisitor6Points() {
+  if  (vScore2 < 4) {          // Displays 1-9 on Visitor scoreboard
+    vScore2 = vScore2 + 6;
+    vTScore = vTScore + 6;
+    clearVisitorRight();          // Clears Display for new number to display
+    visitorRightNum();           // Displays Number on LED Segment
+  }
+  else if  (vScore2 == 4) {    // Displays (10,20,30,40,50,60,70,80,90) on Visitor scoreboard
+    vScore = vScore + 1;
+    vScore2 = 0;
+    vTScore = vTScore + 6;
+    clearVisitorLeft(); clearVisitorRight();     // Clears Display for new number to display
+    visitorLeftNum();           // Displays Number on LED Segment
+    visitorRightNum();          // Displays Number on LED Segment
+  }
+  else if  (vScore2 == 5) {    // Displays (11,21,31,41,51,61,71,81,91) on Visitor Scoreboard
+    vScore = vScore + 1;
+    vScore2 = 1;
+    vTScore = vTScore + 6;
+    clearVisitorLeft(); clearVisitorRight();     // Clears Display for new number to display
+    visitorLeftNum();           // Displays Number on LED Segment
+    visitorRightNum();          // Displays Number on LED Segment
+  }
+  else if  (vScore2 == 6) {    // Displays (12,22,32,42,52,62,72,82,92) on Visitor Scoreboard
+    vScore = vScore + 1;
+    vScore2 = 2;
+    vTScore = vTScore + 6;
+    clearVisitorLeft(); clearVisitorRight();     // Clears Display for new number to display
+    visitorLeftNum();           // Displays Number on LED Segment
+    visitorRightNum();          // Displays Number on LED Segment
+  }
+  else if  (vScore2 == 7) {    // Displays (13,23,33,43,53,63,73,83,93) on Visitor Scoreboard
+    vScore = vScore + 1;
+    vScore2 = 3;
+    vTScore = vTScore + 6;
+    clearVisitorLeft(); clearVisitorRight();     // Clears Display for new number to display
+    visitorLeftNum();           // Displays Number on LED Segment
+    visitorRightNum();          // Displays Number on LED Segment
+  }
+  else if  (vScore2 == 8) {    // Displays (14,24,34,44,54,64,74,84,94) on Visitor Scoreboard
+    vScore = vScore + 1;
+    vScore2 = 4;
+    vTScore = vTScore + 6;
+    clearVisitorLeft(); clearVisitorRight();     // Clears Display for new number to display
+    visitorLeftNum();           // Displays Number on LED Segment
+    visitorRightNum();          // Displays Number on LED Segment
+  }
+  else if  (vScore2 == 9) {     // Displays (15,25,35,45,55,65,75,85,95) on Visitor Scoreboard
+    vScore = vScore + 1;
+    vScore2 = 5;
+    vTScore = vTScore + 6;
+    clearVisitorLeft(); clearVisitorRight();     // Clears Display for new number to display
+    visitorLeftNum();           // Displays Number on LED Segment
+    visitorRightNum();          // Displays Number on LED Segment
+  }
+}
+
+
+//////////////////////////////////////////////////////////////
+void points2BTapp() {
+
+  if (hTScore != currentHomePoints) {
+
+    //For Displaying Home Team score to Bluetooth app
+    //Convert the value to a char array:
+    char hTString[8];          //the ASCII of the integer will be stored in this char array
+    itoa(hTScore, hTString, 10); //(integer, yourBuffer, base)for integer variable convert to string for BT app
+    char sHome[] = "h";
+    char sHomeBT [] = {0};
+
+    // Merge Char arrays to have "h" appear before the score for BT app control
+    strcat(sHomeBT, sHome);
+    strcat(sHomeBT, hTString);
+
+    pTxCharacteristic->setValue(sHomeBT);
+    pTxCharacteristic->notify(); // Send the value to the app!
+
+currentHomePoints = hTScore;
+  }
+
+  if (vTScore != currentVisitorPoints) {
+
+    //For Displaying Home Team score to Bluetooth app
+    //Convert the value to a char array:
+    char vTString[8];          //the ASCII of the integer will be stored in this char array
+    itoa(vTScore, vTString, 10); //(integer, yourBuffer, base)for integer variable convert to string for BT app
+    char sVisitor[] = "v";
+    char sVisitorBT [] = {0};
+
+    // Merge Char arrays to have "v" appear before the score for BT app control
+    strcat(sVisitorBT, sVisitor);
+    strcat(sVisitorBT, vTString);
+
+    pTxCharacteristic->setValue(sVisitorBT);
+    pTxCharacteristic->notify(); // Send the value to the app!
+
+    currentVisitorPoints = vTScore;
+  }
+}
+////////////////////////////////////////////////////////////
+void updateBTapp() {               // reset scores on BT Android app
+
+  char hTString[8];          //the ASCII of the integer will be stored in this char array
+  itoa(hTScore, hTString, 10); //(integer, yourBuffer, base)for integer variable convert to string for BT app
+  char sHome[] = "h";
+  char sHomeBT [] = {0};
+
+  // Merge Char arrays to have "h" appear before the score for BT app control
+  strcat(sHomeBT, sHome);
+  strcat(sHomeBT, hTString);
+
+  pTxCharacteristic->setValue(sHomeBT);
+  pTxCharacteristic->notify(); // Send the value to the app!
+  currentHomePoints = hTScore;
+
+  //For Displaying Home Team score to Bluetooth app
+  //Convert the value to a char array:
+  char vTString[8];          //the ASCII of the integer will be stored in this char array
+  itoa(vTScore, vTString, 10); //(integer, yourBuffer, base)for integer variable convert to string for BT app
+  char sVisitor[] = "v";
+  char sVisitorBT [] = {0};
+
+  // Merge Char arrays to have "v" appear before the score for BT app control
+  strcat(sVisitorBT, sVisitor);
+  strcat(sVisitorBT, vTString);
+
+  pTxCharacteristic->setValue(sVisitorBT);
+  pTxCharacteristic->notify(); // Send the value to the app!
+  currentVisitorPoints = vTScore;
+}
+
+
+///////////////////////////////////////////////////////////
+
+// Read data sent from Bluetooth App
+class MyServerCallbacks: public BLEServerCallbacks {
+    void onConnect(BLEServer* pServer) {
+      deviceConnected = true;
+    };
+
+    void onDisconnect(BLEServer* pServer) {
+      deviceConnected = false;
+    }
+};
+
+// Points buttons in App to trigger points and Reset
+class MyCallbacks: public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic *pCharacteristic) {
+      std::string rxValue = pCharacteristic->getValue();
+
+      if (rxValue.find("rHome") != -1) {
+        resetHome();
+      }
+
+      if (rxValue.find("rVisitor") != -1) {
+        resetVisitor();
+      }
+
+      if (rxValue.find("h1") != -1) {
+        addHome1Point();
+      }
+
+      if (rxValue.find("h2") != -1) {
+        addHome2Points();
+      }
+
+      if (rxValue.find("h3") != -1) {
+        addHome3Points();
+      }
+
+      if (rxValue.find("h6") != -1) {
+        addHome6Points();
+      }
+
+      if (rxValue.find("v1") != -1) {
+        addVisitor1Point();
+      }
+
+      if (rxValue.find("v2") != -1) {
+        addVisitor2Points();
+      }
+
+      if (rxValue.find("v3") != -1) {
+        addVisitor3Points();
+      }
+
+      if (rxValue.find("v6") != -1) {
+        addVisitor6Points();
+      }
+
+    }
+};
+
+//////////////////////////////////////////////////////////////////
+void setup() {
+
+  FastLED.addLeds<NEOPIXEL, homeLED_PIN>(homeLEDs, NUM_LEDS);
+  FastLED.addLeds<NEOPIXEL, visitorLED_PIN>(visitorLEDs, NUM_LEDS);
+  pinMode(2, OUTPUT);                        //initialize Internal LED pin
+  pinMode(21, OUTPUT);                       //initialize LED pin using for showing Bluetooth device connected
+
+  pinMode(resetHomePin, INPUT);                // initialize the physical Reset score pushbutton pins as an input for both teams
+  pinMode(resetVisitorPin, INPUT);
+
+  reset();                        // initialize screen
+
+  // Create the BLE Device
+  BLEDevice::init("ScoreBoard");  //Set Name of ESP device
+
+  // Create the BLE Server
+  pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new MyServerCallbacks());
+
+  // Create the BLE Service
+  BLEService *pService = pServer->createService(SERVICE_UUID);
+
+  // Create a BLE Characteristic
+  pTxCharacteristic = pService->createCharacteristic(CHARACTERISTIC_UUID_ScoreTX, BLECharacteristic::PROPERTY_NOTIFY);
+  pTxCharacteristic->addDescriptor(new BLE2902());
+
+  BLECharacteristic * pRxCharacteristic = pService->createCharacteristic(CHARACTERISTIC_UUID_RX, BLECharacteristic::PROPERTY_WRITE);
+  pRxCharacteristic->setCallbacks(new MyCallbacks());
+
+  // Start the service
+  pService->start();
+
+  // Start advertising
+  pServer->getAdvertising()->start();
+ 
+}
+
+
+
+//////////////////////////////////////////////////////////////////
+void loop() {
+
+  if (deviceConnected) {
+    points2BTapp();
+    delay(250); // bluetooth stack will go into congestion, if too many packets are sent -> adjust delay for better response times from Android app
+    digitalWrite(21, HIGH);  //LED light ON
+  }
+
+  // disconnecting
+  if (!deviceConnected && oldDeviceConnected) {
+    delay(500); // give the bluetooth stack the chance to get things ready
+    pServer->startAdvertising(); // restart advertising
+    
+    oldDeviceConnected = deviceConnected;
+    digitalWrite(21, LOW);  //LED light OFF
+  }
+  // connecting
+  if (deviceConnected && !oldDeviceConnected) {
+    // do stuff here on connecting
+    oldDeviceConnected = deviceConnected;
+
+  }
+
+  resetbuttonStateH = digitalRead(resetHomePin);            // read the state of the pushbutton values
+  if (resetbuttonStateH == HIGH) {                    // check if the pushbutton is pressed
+    resetHome();
+  }
+
+  resetbuttonStateV = digitalRead(resetVisitorPin);                   // read the state of the pushbutton values
+  if (resetbuttonStateV == HIGH) {                                // check if the pushbutton is pressed
+    resetVisitor();
+  }
+}
