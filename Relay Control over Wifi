@@ -1,0 +1,70 @@
+# DEMO relay
+
+import streams
+from wireless import wifi
+
+from espressif.esp32net import esp32wifi as wifi_driver
+from zerynthapp import zerynthapp
+
+streams.serial()
+
+sleep(1000)
+print("STARTING...")
+
+relay_1 = D23
+relay_2 = D22
+
+pinMode(relay_1,OUTPUT)
+pinMode(relay_2,OUTPUT)
+
+digitalWrite(relay_1,0)
+digitalWrite(relay_2,0)
+
+# define a function to control relay
+def set_relay(relay,status):
+    if relay == 1:
+        pin = relay_1
+    else:
+        pin = relay_2
+    print("relay:",relay,"status:",status)
+    digitalWrite(pin,status)
+        
+
+try:
+    device_uid = 'bK1-MP0eTY-D3-N_13Jw5w'
+    device_tkn = '8KH18QopQg2E3sKlBWTU6w'
+    zapp = zerynthapp.ZerynthApp(device_uid, device_tkn, log=True)
+except Exception as e:
+    print(e)
+
+# link "control" to set_relay
+zapp.on("control",set_relay)
+
+try:
+    
+    ssid = 'Zerynth'
+    pwd = 'zerynthwifi'
+    
+    wifi_driver.auto_init()
+    for i in range(0,5):
+        try:
+            wifi.link(ssid,wifi.WIFI_WPA2,pwd)
+            break
+        except Exception as e:
+            print("Can't link",e)
+    else:
+        print("Impossible to link!")
+        while True:
+            sleep(1000)
+
+    # Start the Zerynth app instance!
+    # Remember to create a template with the files under the "template" folder you just cloned
+    # upload it to the ADM and associate it with the connected device
+    zapp.run()
+    
+    while True:
+        print("4ZeroBox DEMO RELAY running...")
+        sleep(5000)
+        
+except Exception as e:
+    print(e)
