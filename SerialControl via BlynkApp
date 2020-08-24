@@ -1,0 +1,102 @@
+#define BLYNK_PRINT Serial    // Comment this out to disable prints and save space
+#include <ESP8266_SoftSer.h>
+#include <BlynkSimpleShieldEsp8266_SoftSer.h>
+
+// Set ESP8266 Serial object
+#include <SoftwareSerial.h>
+SoftwareSerial EspSerial(2, 3); // RX, TX
+
+ESP8266 wifi(EspSerial);
+
+// You should get Auth Token in the Blynk App.
+// Go to the Project Settings (nut icon).
+char auth[] = "caa17a11c0124d4083d0eaa995f45917";
+
+#define m11 8
+#define m12 9
+#define m21 10
+#define m22 11
+
+void forward()
+{
+  digitalWrite(m11, HIGH);
+  digitalWrite(m12,LOW);
+  digitalWrite(m21,HIGH);
+  digitalWrite(m22,LOW);
+}
+
+void backward()
+{
+  digitalWrite(m11, LOW);
+  digitalWrite(m12,HIGH);
+  digitalWrite(m21,LOW);
+  digitalWrite(m22,HIGH);
+}
+
+void right()
+{
+  digitalWrite(m11, HIGH);
+  digitalWrite(m12,LOW);
+  digitalWrite(m21,LOW);
+  digitalWrite(m22,LOW);
+}
+
+void left()
+{
+  digitalWrite(m11, LOW);
+  digitalWrite(m12,LOW);
+  digitalWrite(m21,HIGH);
+  digitalWrite(m22,LOW);
+}
+
+void Stop()
+{
+  digitalWrite(m11, LOW);
+  digitalWrite(m12,LOW);
+  digitalWrite(m21,LOW);
+  digitalWrite(m22,LOW);
+}
+
+void setup()
+{
+  // Set console baud rate
+  Serial.begin(9600);
+  delay(10);
+  // Set ESP8266 baud rate
+  // 9600 is recommended for Software Serial
+  EspSerial.begin(9600);
+  delay(10);
+
+  Blynk.begin(auth, wifi, "username", "password");  // wifi username and password
+  pinMode(m11, OUTPUT);
+  pinMode(m12, OUTPUT);
+  pinMode(m21, OUTPUT);
+  pinMode(m22, OUTPUT);
+}
+
+BLYNK_WRITE(V1) 
+{
+  int x = param[0].asInt();
+  int y = param[1].asInt();
+
+  // Do something with x and y
+/*  Serial.print("X = ");
+  Serial.print(x);
+  Serial.print("; Y = ");
+  Serial.println(y);*/
+  if(y>220)
+  forward();
+  else if(y<35)
+  backward();
+  else if(x>220)
+  right();
+  else if(x<35)
+  left();
+  else
+  Stop();
+}
+
+void loop()
+{
+  Blynk.run();
+}
