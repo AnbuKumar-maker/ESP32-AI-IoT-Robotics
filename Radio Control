@@ -1,0 +1,93 @@
+int motorPinsLeft[6] = {13, 12, 11, 10, 9, 8};
+int motorPinsRight[6] = {7, 6, 5, 4, 3, 2};
+ 
+int maxSpeed = 255;
+int leftSpeed,rightSpeed;
+ 
+unsigned long durationSpeed;
+unsigned long durationDir;
+float remoteSpeed, remoteDir;
+int speedPin = 14;
+int dirPin = 15;
+int rfLimits[4] ={1000,2000,1000,2000};
+ 
+void setup() {
+  for (int i = 0; i < 6; i++) {
+    pinMode(motorPinsLeft[i], OUTPUT);
+    pinMode(motorPinsRight[i], OUTPUT);
+  }
+  Serial.begin(9600);
+}
+ 
+void getRFCommands(){
+ 
+ 
+  durationSpeed = pulseIn(speedPin,HIGH);
+  durationDir = pulseIn(dirPin,HIGH);
+ 
+  remoteSpeed = (map(durationSpeed,rfLimits[0],rfLimits[1],-100,100))/100.0;
+  remoteDir = (map(durationDir,rfLimits[2],rfLimits[3],-100,100))/100.0;
+  remoteSpeed = constrain(remoteSpeed,-1.0,1.0);
+  remoteDir = constrain(remoteDir,-1.0,1.0);
+ 
+  Serial.print(remoteSpeed);
+  Serial.print(" . ");
+  Serial.println(remoteDir);
+   
+}
+ 
+void moveRobot(float mySpeed, float myTurn, int type = 0, int t = 0) {
+ 
+  mySpeed *= maxSpeed;
+  myTurn *= maxSpeed;
+ 
+  //Inidividual Speeds
+  leftSpeed = int(mySpeed - myTurn);
+  rightSpeed = int(mySpeed + myTurn);
+ 
+  //Limit
+  leftSpeed = constrain(leftSpeed, -maxSpeed, maxSpeed);
+  rightSpeed = constrain(rightSpeed, -maxSpeed, maxSpeed);
+ 
+  // Send Speed
+  analogWrite(motorPinsLeft[0], abs(leftSpeed));
+  analogWrite(motorPinsLeft[5], abs(leftSpeed));
+  analogWrite(motorPinsRight[0], abs(rightSpeed));
+  analogWrite(motorPinsRight[5], abs(rightSpeed));
+ 
+  if (leftSpeed > 0) {
+    digitalWrite(motorPinsLeft[1], 1);
+    digitalWrite(motorPinsLeft[2], 0);
+    digitalWrite(motorPinsLeft[3],0);
+    digitalWrite(motorPinsLeft[4],1);
+  }
+  else{
+    digitalWrite(motorPinsLeft[1], 0);
+    digitalWrite(motorPinsLeft[2], 1);
+    digitalWrite(motorPinsLeft[3],1);
+    digitalWrite(motorPinsLeft[4],0);
+  }
+ if (rightSpeed > 0) {
+    digitalWrite(motorPinsRight[1], 1);
+    digitalWrite(motorPinsRight[2], 0);
+    digitalWrite(motorPinsRight[3],0);
+    digitalWrite(motorPinsRight[4],1);
+  }
+  else{
+    digitalWrite(motorPinsRight[1], 0);
+    digitalWrite(motorPinsRight[2], 1);
+    digitalWrite(motorPinsRight[3],1);
+    digitalWrite(motorPinsRight[4],0);
+  }
+delay(t);
+}
+ 
+void loop() {
+ 
+getRFCommands();
+if (remoteSpeed<0.1 &amp;&amp; remoteSpeed >-0.1){remoteSpeed = 0;}
+if (remoteDir<0.1 &amp;&amp; remoteDir >-0.1){remoteDir = 0;}
+moveRobot(-remoteSpeed,-remoteDir,0,50);
+ 
+ 
+}
